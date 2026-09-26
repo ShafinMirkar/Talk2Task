@@ -1,0 +1,135 @@
+import json
+
+from mcp import ClientSession
+
+from app.config import (
+    ATLASSIAN_CLOUD_ID,
+    JIRA_PROJECT_KEY,
+)
+
+from app.models import ActionItem
+
+from app.jira.users import resolve_jira_user
+from app.jira.transitions import (
+    transition_issue_to_todo,
+)
+
+
+async def create_jira_issue(
+    session: ClientSession,
+    action_item: ActionItem,
+):
+
+    account_id = await resolve_jira_user(
+        session,
+        action_item.assignee,
+    )
+
+    description = (
+        "Created from Talk2Task meeting "
+        "action item.\n\n"
+        f"Task: {action_item.task}\n"
+        f"Assignee: "
+        f"{action_item.assignee or 'Unassigned'}\n"
+        f"Due date: "
+        f"{action_item.due_date or 'No due date'}"
+    )
+
+    payload = {
+        "cloudId": ATLASSIAN_CLOUD_ID,
+        "projectKey": JIRA_PROJECT_KEY,
+        "summary": action_item.task,
+        "issueType": "Task",
+        "description": description,
+    }
+
+    if account_id:
+        payload["assignee"] = account_id
+
+    return await session.call_tool(
+        "createJiraIssue",
+        payload,
+    )
+
+
+async def create_jira_issues(
+    action_items: list[ActionItem],
+):
+
+    from app.jira.client import (
+        create_http_client,
+        create_mcp_connection,
+        create_mcp_session,
+    )
+
+    async with create_http_client() as http_client:
+
+        async with create_mcp_connection(
+            http_client
+        ) as (
+            read_stream,
+            write_stream,
+        ):
+
+            async with create_mcp_session(
+                read_stream,
+                write_stream,
+            ) as session:
+
+                await session.initialize()
+
+                results = []
+
+                for item in action_items:
+
+                    # -------------------------
+                    # Create issue
+                    # -------------------------
+
+                    result = await create_jira_issue(
+                        session,
+                        item,
+                    )
+
+                    created_data = json.loads(
+                        result.content[0].text
+                    )
+
+                    issue_key = (
+                        created_data[
+                            "data"
+                        ]["key"]
+                    )
+
+                    print(
+                        f"Created Jira issue: "
+                        f"{issue_key}"
+                    )
+
+                    # -------------------------
+                    # Move to To Do
+                    # -------------------------
+
+                    transition_result = (
+                        await transition_issue_to_todo(
+                            session,
+                            issue_key,
+                        )
+                    )
+
+                    print(
+                        f"Moved {issue_key} "
+                        f"-> To Do"
+                    )
+
+                    results.append(
+                        {
+                            "issue_key": issue_key,
+                            "create_result": result,
+                            "transition_result": (
+                                transition_result
+                            ),
+                        }
+                    )
+
+                return results
