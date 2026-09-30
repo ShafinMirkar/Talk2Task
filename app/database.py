@@ -1,6 +1,6 @@
 from pymongo import MongoClient, ASCENDING
 from datetime import datetime, timezone
-
+from bson import ObjectId
 from app.config import MONGODB_URI, MONGODB_DATABASE
 
 
@@ -85,7 +85,7 @@ def save_meeting(
         "platform": meeting["platform"],
         "native_meeting_id": meeting["native_meeting_id"],
         "vexa_meeting_id": meeting.get("id"),
-        "meeting_url": meeting.get("constructed_meeting_url"),
+        "meeting_url": meeting.get("meeting_url"),
         "status": meeting.get("status"),
         "completion_reason": meeting.get("completion_reason"),
         "start_time": meeting.get("start_time"),
@@ -102,7 +102,9 @@ def save_meeting(
             "platform": meeting["platform"],
             "native_meeting_id": meeting["native_meeting_id"],
         },
-        {"$set": document},
+        {
+            "$set": document,
+        },
         upsert=True,
     )
 
@@ -148,7 +150,6 @@ action_items_collection.create_index(
     [("status", ASCENDING)]
 )
 
-
 def get_meeting_owner(
     platform: str,
     native_meeting_id: str,
@@ -183,10 +184,10 @@ def update_meeting_vexa_data(
             "$set": {
                 "vexa_meeting_id": vexa_meeting_id,
                 "status": status,
+                "updated_at": datetime.now(timezone.utc),
             }
         },
     )
-
 
 def get_meeting_by_native_id(
     platform: str,
@@ -199,6 +200,24 @@ def get_meeting_by_native_id(
         }
     )
 
+def get_meeting_by_id(
+    meeting_id: str,
+    clerk_id: str,
+):
+    if not ObjectId.is_valid(meeting_id):
+        return None
+
+    meeting = meetings_collection.find_one({
+        "_id": ObjectId(meeting_id),
+        "clerk_id": clerk_id,
+    })
+
+    if not meeting:
+        return None
+
+    meeting["_id"] = str(meeting["_id"])
+
+    return meeting
 
 def create_action_item(
     action_item: dict,
@@ -208,30 +227,51 @@ def create_action_item(
     document = {
         "clerk_id": clerk_id,
         "meeting_id": meeting_id,
-
         "task": action_item["task"],
         "assignee": action_item.get("assignee"),
         "due_date": action_item.get("due_date"),
-
-        "status": "pending_approval",
-
+        "status": None,
         "jira_issue_key": None,
+        "created_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc),
     }
 
     result = action_items_collection.insert_one(document)
 
-    document["_id"] = result.inserted_id
+    document["_id"] = str(result.inserted_id)
 
     return document
 
 def get_user_action_items(clerk_id: str):
-    return list(
+    items = list(
         action_items_collection.find(
-            {"clerk_id": clerk_id},
-            {"_id": 0},
-        ).sort("created_at", -1)
+            {
+                "clerk_id": clerk_id,
+            }
+        ).sort(
+            "created_at",
+            -1,
+        )
     )
 
+    for item in items:
+        item["_id"] = str(item["_id"])
+
+        if isinstance(item.get("meeting_id"), ObjectId):
+            item["meeting_id"] = str(item["meeting_id"])
+
+    return items
+
+def get_action_item(
+    clerk_id: str,
+    action_item_id: ObjectId,
+):
+    return action_items_collection.find_one(
+        {
+            "_id": action_item_id,
+            "clerk_id": clerk_id,
+        }
+    )
 
 def get_meeting_action_items(
     clerk_id: str,
@@ -247,10 +287,9 @@ def get_meeting_action_items(
         ).sort("created_at", -1)
     )
 
-
 def update_action_item(
     clerk_id: str,
-    action_item_id,
+    action_item_id: ObjectId,
     updates: dict,
 ):
     updates["updated_at"] = datetime.now(timezone.utc)
@@ -259,15 +298,46 @@ def update_action_item(
         {
             "_id": action_item_id,
             "clerk_id": clerk_id,
+            "status": None,
         },
         {
             "$set": updates,
         },
     )
 
+    if result.matched_count == 0:
+        return None
+
+    return get_action_item(
+        clerk_id,
+        action_item_id,
+    )
+
+def update_action_item_status(
+    action_item_id: str,
+    clerk_id: str,
+    status: str,
+    jira_issue_key: str | None = None,
+):
+    update = {
+        "status": status,
+        "updated_at": datetime.now(timezone.utc),
+    }
+
+    if jira_issue_key:
+        update["jira_issue_key"] = jira_issue_key
+
+    result = action_items_collection.update_one(
+        {
+            "_id": ObjectId(action_item_id),
+            "clerk_id": clerk_id,
+        },
+        {
+            "$set": update,
+        },
+    )
+
     return result.modified_count > 0
-
-
 # ============================================================
 # JIRA CONNECTIONS
 # ============================================================

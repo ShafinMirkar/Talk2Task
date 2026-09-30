@@ -14,19 +14,11 @@ def _headers(api_key: str):
         "Content-Type": "application/json",
     }
 
-
 async def start_meeting_bot(
     platform: str,
     meeting_url: str,
     passcode: str | None = None,
 ):
-    """
-    Start a Vexa bot using the full meeting URL.
-
-    Used when a user creates a meeting through Talk2Task.
-    Vexa parses the native meeting ID from the URL.
-    """
-
     payload = {
         "platform": platform,
         "meeting_url": meeting_url,
@@ -50,11 +42,17 @@ async def start_meeting_bot(
             timeout=30,
         )
 
+        print("\n========== VEXA REQUEST ==========")
+        print(payload)
+
+        print("\n========== VEXA RESPONSE ==========")
+        print("STATUS:", response.status_code)
+        print("BODY:", response.text)
+        print("==================================\n")
+
         response.raise_for_status()
 
         return response.json()
-
-
 def send_bot(
     platform: str,
     native_meeting_id: str,
@@ -107,3 +105,33 @@ def get_transcript(
     response.raise_for_status()
 
     return response.json()
+
+async def get_meeting_status(
+    vexa_meeting_id: str | int,
+):
+    url = (
+        f"{VEXA_API_BASE}/meetings/"
+        f"{vexa_meeting_id}"
+    )
+
+    # Vexa's meeting lookup needs the TX key
+    headers = {
+        "X-API-Key": VEXA_TX_API_KEY,
+    }
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.get(
+            url,
+            headers=headers,
+        )
+
+    response.raise_for_status()
+
+    data = response.json()
+
+    return {
+        "status": data.get("status"),
+        "completion_reason": data.get("completion_reason"),
+        "start_time": data.get("start_time"),
+        "end_time": data.get("end_time"),
+    }

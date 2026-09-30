@@ -1,4 +1,4 @@
-#!/home/shafin/Desktop/Projects/meeting-transcript-test/.venv/bin/python3
+#!/home/shafin/Desktop/Projects/Talk2Task/.venv/bin/python
 # -*- coding: utf-8 -*-
 
 from __future__ import print_function

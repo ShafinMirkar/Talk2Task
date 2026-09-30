@@ -56,6 +56,10 @@ class ActionItem(BaseModel):
     assignee: str | None = None
     due_date: str | None = None
 
+class ActionItemUpdate(BaseModel):
+    task: str | None = None
+    assignee: str | None = None
+    due_date: str | None = None
 
 class MeetingIntelligence(BaseModel):
     summary: MeetingSummary
@@ -79,3 +83,7 @@ class User(BaseModel):
     last_name: str | None = None
     image_url: str | None = None
     created_at: datetime
+
+class ActionItemReview(BaseModel):
+    approved: list[str] = []
+    rejected: list[str] = []

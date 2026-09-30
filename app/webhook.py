@@ -11,7 +11,7 @@ from app.database import (
     get_meeting_by_native_id,
     get_meeting_owner,
     create_action_item,
-    update_meeting_status,
+    update_meeting_vexa_data,
 )
 
 from app.vexa import get_transcript
@@ -22,7 +22,7 @@ from app.jira.users import fetch_project_context
 
 
 router = APIRouter(
-    prefix="/api/webhooks",
+    prefix="/webhooks",
     tags=["webhooks"],
 )
 
@@ -110,8 +110,13 @@ async def handle_webhook(request: Request):
     event_type = data.get("event_type")
 
     if event_type != "meeting.completed":
+        print(
+            "Ignoring event:",
+            event_type,
+        )
+
         return {
-            "status": "ignored"
+            "status": "ignored",
         }
 
     meeting_data = data.get(
@@ -130,11 +135,10 @@ async def handle_webhook(request: Request):
         "native_meeting_id"
     )
 
-    print(
-        f"\nMeeting completed: "
-        f"{platform} / {native_meeting_id}"
-    )
-
+    print("\n========== VEXA WEBHOOK ==========")
+    print(f"[WEBHOOK] Event: {event_type}")
+    print(f"[WEBHOOK] Platform: {platform}")
+    print(f"[WEBHOOK] Native meeting ID: {native_meeting_id}")
     # --------------------------------------------------------
     # 4. Find Talk2Task owner
     # --------------------------------------------------------
@@ -145,10 +149,9 @@ async def handle_webhook(request: Request):
     )
 
     if not clerk_id:
+
         print(
-            "No Talk2Task owner found for meeting:",
-            platform,
-            native_meeting_id,
+            "No Talk2Task owner found."
         )
 
         return {
@@ -156,12 +159,10 @@ async def handle_webhook(request: Request):
             "reason": "meeting_owner_not_found",
         }
 
-    print(
-        f"Meeting belongs to Clerk user: {clerk_id}"
-    )
+    print(f"[WEBHOOK] Clerk user: {clerk_id}")
 
     # --------------------------------------------------------
-    # 5. Get our MongoDB meeting
+    # 5. Get Talk2Task meeting
     # --------------------------------------------------------
 
     meeting = get_meeting_by_native_id(
@@ -170,10 +171,9 @@ async def handle_webhook(request: Request):
     )
 
     if not meeting:
+
         print(
-            "Meeting not found in Talk2Task database:",
-            platform,
-            native_meeting_id,
+            "Meeting not found in MongoDB."
         )
 
         return {
@@ -181,9 +181,24 @@ async def handle_webhook(request: Request):
             "reason": "meeting_not_found",
         }
 
+    print(
+        "MongoDB meeting found:",
+        meeting.get("_id"),
+    )
+
+    # Tell the frontend that post-meeting AI processing has started.
+    update_meeting_vexa_data(
+        platform=platform,
+        native_meeting_id=native_meeting_id,
+        vexa_meeting_id=meeting.get("vexa_meeting_id"),
+        status="analyzing",
+    )
+
     # --------------------------------------------------------
-    # 6. Fetch transcript from Vexa
+    # 6. Fetch transcript
     # --------------------------------------------------------
+
+    print("[TRANSCRIPT] Fetching transcript...")
 
     raw_transcript = get_transcript(
         platform,
@@ -199,25 +214,24 @@ async def handle_webhook(request: Request):
     )
 
     print(
-        "\n========== TRANSCRIPT =========="
+        f"[TRANSCRIPT] "
+        f"Received {len(transcript.segments)} segments"
     )
-
-    print(
-        transcript.to_text()
-    )
-
-    print(
-        "================================"
-    )
-
     # --------------------------------------------------------
     # 8. Fetch Jira project context
     # --------------------------------------------------------
 
+    print("[JIRA] Fetching project users...")
+
     jira_context = await fetch_project_context()
 
+    print(
+        "[JIRA] Users:",
+        [user.display_name for user in jira_context.users],
+    )
+
     # --------------------------------------------------------
-    # 9. Gemini meeting intelligence
+    # 9. Meeting date
     # --------------------------------------------------------
 
     meeting_date = (
@@ -225,9 +239,22 @@ async def handle_webhook(request: Request):
     )
 
     if not meeting_date:
-        meeting_date = (
-            time.strftime("%Y-%m-%d")
+
+        meeting_date = time.strftime(
+            "%Y-%m-%d"
         )
+
+    meeting_date = str(
+        meeting_date
+    )
+
+    # --------------------------------------------------------
+    # 10. Gemini intelligence
+    # --------------------------------------------------------
+
+    print(
+        "\nAnalyzing meeting with Gemini..."
+    )
 
     intelligence = process_meeting(
         transcript=transcript,
@@ -236,51 +263,7 @@ async def handle_webhook(request: Request):
     )
 
     # --------------------------------------------------------
-    # 10. Save action items for HITL
-    # --------------------------------------------------------
-
-    for item in intelligence.action_items:
-
-        saved_item = create_action_item(
-            action_item=item.model_dump(),
-            clerk_id=clerk_id,
-            meeting_id=meeting["_id"],
-        )
-
-        print(
-            "\nAction item saved:"
-        )
-
-        print(
-            f"  Task: {saved_item['task']}"
-        )
-
-        print(
-            f"  Assignee: "
-            f"{saved_item.get('assignee')}"
-        )
-
-        print(
-            f"  Due: "
-            f"{saved_item.get('due_date')}"
-        )
-
-        print(
-            "  Status: pending_approval"
-        )
-
-    # --------------------------------------------------------
-    # 11. Mark meeting as processed
-    # --------------------------------------------------------
-
-    update_meeting_status(
-        platform=platform,
-        native_meeting_id=native_meeting_id,
-        status="processed",
-    )
-
-    # --------------------------------------------------------
-    # 12. Print AI result
+    # 11. Print intelligence
     # --------------------------------------------------------
 
     print(
@@ -296,6 +279,7 @@ async def handle_webhook(request: Request):
     )
 
     for point in intelligence.summary.key_points:
+
         print(
             "-",
             point,
@@ -308,11 +292,13 @@ async def handle_webhook(request: Request):
     for decision in intelligence.decisions:
 
         print(
-            f"- {decision.decision}"
+            "-",
+            decision.decision,
         )
 
         print(
-            f"  Made by: {decision.made_by}"
+            "  Made by:",
+            decision.made_by,
         )
 
     print(
@@ -322,21 +308,91 @@ async def handle_webhook(request: Request):
     for item in intelligence.action_items:
 
         print(
-            f"- {item.task}"
+            "-",
+            item.task,
         )
 
         print(
-            f"  Assignee: {item.assignee}"
+            "  Assignee:",
+            item.assignee,
         )
 
         print(
-            f"  Due: {item.due_date}"
+            "  Due:",
+            item.due_date,
         )
+
+    # --------------------------------------------------------
+    # 12. Save action items
+    # --------------------------------------------------------
 
     print(
-        "================================"
+        "\nSaving action items..."
     )
 
+    for item in intelligence.action_items:
+
+        saved_item = create_action_item(
+            action_item=item.model_dump(),
+            clerk_id=clerk_id,
+            meeting_id=meeting["_id"],
+        )
+
+        print(
+            "\nAction item saved:"
+        )
+
+        print(
+            "  ID:",
+            saved_item.get("_id"),
+        )
+
+        print(
+            "  Task:",
+            saved_item.get("task"),
+        )
+
+        print(
+            "  Assignee:",
+            saved_item.get("assignee"),
+        )
+
+        print(
+            "  Due:",
+            saved_item.get("due_date"),
+        )
+
+        print(
+            "  Status:",
+            saved_item.get("status"),
+        )
+
+    # --------------------------------------------------------
+    # 13. Mark meeting processed
+    # --------------------------------------------------------
+
+    update_meeting_vexa_data(
+        platform=platform,
+        native_meeting_id=native_meeting_id,
+        vexa_meeting_id=meeting.get(
+            "vexa_meeting_id"
+        ),
+        status="processed",
+    )
+
+    print(
+        "\n================================"
+    )
+
+    print(
+        "Meeting processing complete."
+    )
+
+    print(
+        "================================\n"
+    )
+
+    
     return {
         "status": "processed",
         "platform": platform,

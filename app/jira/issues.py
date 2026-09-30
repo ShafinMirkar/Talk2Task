@@ -51,11 +51,9 @@ async def create_jira_issue(
         payload,
     )
 
-
 async def create_jira_issues(
     action_items: list[ActionItem],
 ):
-
     from app.jira.client import (
         create_http_client,
         create_mcp_connection,
@@ -63,29 +61,28 @@ async def create_jira_issues(
     )
 
     async with create_http_client() as http_client:
-
         async with create_mcp_connection(
             http_client
-        ) as (
-            read_stream,
-            write_stream,
-        ):
+        ) as (read_stream, write_stream):
 
             async with create_mcp_session(
                 read_stream,
                 write_stream,
             ) as session:
 
+                print("[JIRA MCP] Session initialized")
                 await session.initialize()
 
                 results = []
 
                 for item in action_items:
-
-                    # -------------------------
-                    # Create issue
-                    # -------------------------
-
+                    print(
+                        f"[JIRA MCP] Creating issue: {item.task}"
+                    )
+                    print(
+                        f"[JIRA MCP] Assignee: "
+                        f"{item.assignee or 'Unassigned'}"
+                    )
                     result = await create_jira_issue(
                         session,
                         item,
@@ -96,40 +93,30 @@ async def create_jira_issues(
                     )
 
                     issue_key = (
-                        created_data[
-                            "data"
-                        ]["key"]
+                        created_data["data"]["key"]
                     )
 
                     print(
-                        f"Created Jira issue: "
-                        f"{issue_key}"
+                        f"[JIRA MCP] Created: {issue_key}"
                     )
 
-                    # -------------------------
-                    # Move to To Do
-                    # -------------------------
-
-                    transition_result = (
-                        await transition_issue_to_todo(
-                            session,
-                            issue_key,
-                        )
+                    await transition_issue_to_todo(
+                        session,
+                        issue_key,
                     )
 
                     print(
-                        f"Moved {issue_key} "
-                        f"-> To Do"
+                        f"[JIRA MCP] {issue_key} -> To Do"
                     )
 
-                    results.append(
-                        {
-                            "issue_key": issue_key,
-                            "create_result": result,
-                            "transition_result": (
-                                transition_result
-                            ),
-                        }
-                    )
-
+                    results.append({
+                        "issue_key": issue_key,
+                        "task": item.task,
+                        "assignee": item.assignee,
+                    })
+                    
+                print(
+                    f"[JIRA MCP] Finished. "
+                    f"Created {len(results)} issues."
+                )
                 return results

@@ -1,21 +1,11 @@
-from fastapi import FastAPI, Request
-
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.models import Meeting
-from app.platforms import validate_meeting
-from app.vexa import send_bot
-from app.webhook import handle_webhook
-
+from app.action_items.routes import router as action_items_router
 from app.auth.routes import router as auth_router
+from app.auth.webhook import router as clerk_webhook_router
 from app.meeting.routes import router as meeting_router
 from app.webhook import router as vexa_webhook_router
-
-
-from fastapi import FastAPI
-
-from app.auth.webhook import router as clerk_webhook_router
-
 
 
 app = FastAPI(
@@ -38,6 +28,8 @@ app.include_router(
 app.include_router(auth_router)
 app.include_router(vexa_webhook_router)
 app.include_router(meeting_router)
+app.include_router(action_items_router)
+
 
 @app.get("/")
 def root():
@@ -45,25 +37,3 @@ def root():
         "status": "ok",
         "service": "Talk2Task",
     }
-
-
-@app.post("/meetings/send-bot")
-def create_meeting_bot(meeting: Meeting):
-
-    validate_meeting(
-        meeting.platform,
-        meeting.native_meeting_id,
-        meeting.passcode,
-    )
-
-    return send_bot(
-        platform=meeting.platform.value,
-        native_meeting_id=meeting.native_meeting_id,
-        passcode=meeting.passcode,
-    )
-
-@app.post("/webhooks/vexa")
-async def vexa_webhook(
-    request: Request,
-):
-    return await handle_webhook(request)
