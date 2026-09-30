@@ -1,12 +1,26 @@
+:root {
+  --bg: #f7f3ea;
+  --ink: #1f1b16;
+  --muted: #6b6459;
+  --line: #ddd5c4;
+  --error: #9b2c1f;
+}
+
 * {
   box-sizing: border-box;
 }
 
+html,
 body {
   margin: 0;
-  font-family: Inter, system-ui, sans-serif;
-  background: #0b0f0e;
-  color: #f1f5f3;
+}
+
+body {
+  font-family: "Fraunces", Georgia, "Times New Roman", serif;
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
@@ -14,62 +28,357 @@ a {
   text-decoration: none;
 }
 
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+
+/* ---------- buttons ---------- */
+
+.btn {
+  padding: 0.75rem 1.6rem;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn.ghost {
+  background: transparent;
+  color: var(--ink);
+}
+
+.btn.ghost:hover:not(:disabled) {
+  background: var(--ink);
+  color: var(--bg);
+  opacity: 1;
+}
+
+/* ---------- signed-out landing + auth ---------- */
+
 .auth-page {
   min-height: 100vh;
+  padding: 2rem 1.25rem;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .auth-container {
-  width: 420px;
+  max-width: 34rem;
   text-align: center;
 }
 
 .auth-container h1 {
-  font-size: 42px;
-  margin-bottom: 12px;
+  margin: 0 0 1rem;
+  font-size: clamp(2.6rem, 8vw, 4.5rem);
+  font-weight: 500;
+  letter-spacing: -0.02em;
 }
 
 .auth-container p {
-  color: #8a9993;
-  margin-bottom: 32px;
+  margin: 0 0 2.25rem;
+  font-size: 1.25rem;
+  color: var(--muted);
 }
 
 .auth-buttons {
   display: flex;
-  gap: 12px;
+  gap: 0.75rem;
   justify-content: center;
+  flex-wrap: wrap;
 }
 
 .auth-buttons a {
-  padding: 12px 20px;
-  border-radius: 8px;
-  background: #5ee6a8;
-  color: #07100c;
-  font-weight: 600;
+  padding: 0.75rem 1.6rem;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
 }
 
-.dashboard {
+.auth-buttons a:first-child {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+/* ---------- signed-in app ---------- */
+
+.app {
   min-height: 100vh;
+  position: relative;
 }
 
-.header {
-  height: 72px;
-  padding: 0 32px;
+.user-corner {
+  position: absolute;
+  top: 1.25rem;
+  right: 1.5rem;
+}
 
+.screen {
+  min-height: 100vh;
+  padding: 5rem 1.25rem 4rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+/* landing */
+
+.landing {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 6rem 1.25rem 5rem;
+  text-align: center;
+}
+
+.landing h1 {
+  margin: 0 0 1rem;
+  font-size: clamp(3rem, 10vw, 5.5rem);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+.tagline {
+  margin: 0 auto 3rem;
+  max-width: 30rem;
+  font-size: clamp(1.25rem, 3.5vw, 1.6rem);
+  font-style: italic;
+  font-weight: 300;
+}
+
+.explain {
+  margin: 0 auto 1.25rem;
+  max-width: 34rem;
+  color: var(--muted);
+  font-size: 1.05rem;
+}
+
+.meeting-form {
+  margin: 3rem auto 0;
+  max-width: 30rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.meeting-form input {
+  width: 100%;
+  padding: 0.8rem 0.25rem;
+  border: 0;
+  border-bottom: 1px solid var(--ink);
+  border-radius: 0;
+  background: transparent;
+  font-size: 1.15rem;
+  text-align: center;
+}
+
+.meeting-form input::placeholder {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.meeting-form input:focus-visible {
+  outline: none;
+  border-bottom-width: 2px;
+}
+
+.form-error {
+  margin: 0;
+  color: var(--error);
+}
+
+.steps {
+  margin: 5rem 0 0;
+}
+
+.steps h2 {
+  margin: 0 0 1.5rem;
+  font-size: 0.9rem;
+  font-weight: 400;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.steps ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.steps li {
+  font-size: 1.2rem;
+}
+
+.steps li:not(:last-child)::after {
+  content: "↓";
+  display: block;
+  margin: 0.35rem 0;
+  color: var(--muted);
+}
+
+/* meeting states */
+
+.state-text {
+  margin: 0;
+  font-size: clamp(2rem, 6vw, 3.5rem);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.state-sub {
+  margin: 1.25rem 0 0;
+  font-size: 1.15rem;
+  font-style: italic;
+  color: var(--muted);
+}
+
+.state-error {
+  color: var(--error);
+}
+
+.state-actions {
+  margin-top: 2.5rem;
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* task review */
+
+.review {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 6rem 1.25rem 5rem;
+}
+
+.review h1 {
+  margin: 0 0 2.5rem;
+  font-size: clamp(2.5rem, 8vw, 4rem);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.task {
+  padding: 1.75rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.task h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.5rem;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.task-meta {
+  margin: 0;
+  color: var(--muted);
+}
+
+.task-meta .dim {
+  font-style: italic;
+}
+
+.task-actions {
+  margin-top: 1.1rem;
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.task-actions .btn {
+  padding: 0.5rem 1.2rem;
+  font-size: 0.95rem;
+}
+
+.btn.chosen {
+  background: var(--ink);
+  color: var(--bg);
+  opacity: 1;
+}
+
+.review-footer {
+  margin-top: 1rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--ink);
   display: flex;
   align-items: center;
   justify-content: space-between;
-
-  border-bottom: 1px solid #202927;
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 
-.logo {
-  font-size: 20px;
-  font-weight: 700;
+.review-footer p {
+  margin: 0;
+  color: var(--muted);
 }
 
-.content {
-  padding: 48px;
+.review-footer .form-error {
+  flex-basis: 100%;
+}
+
+/* notifications */
+
+.toasts {
+  position: fixed;
+  top: 4.5rem;
+  right: 1.25rem;
+  z-index: 10;
+  width: min(20rem, calc(100vw - 2.5rem));
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.toast {
+  padding: 0.9rem 1.1rem;
+  border: 1px solid var(--ink);
+  background: var(--bg);
+  animation: toast-in 0.25s ease-out;
+}
+
+.toast small {
+  display: block;
+  color: var(--muted);
+}
+
+.toast strong {
+  display: block;
+  font-weight: 600;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(0.75rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
 }

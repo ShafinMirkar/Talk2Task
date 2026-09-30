@@ -7,7 +7,6 @@ from pydantic import BaseModel
 class Platform(str, Enum):
     GOOGLE_MEET = "google_meet"
     TEAMS = "teams"
-    ZOOM = "zoom"
 
 
 class Meeting(BaseModel):

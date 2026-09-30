@@ -18,10 +18,4 @@ def validate_meeting(
                 "Teams meeting ID is required"
             )
 
-    elif platform == Platform.ZOOM:
-        if not meeting_id:
-            raise ValueError(
-                "Zoom meeting ID is required"
-            )
-
     return True

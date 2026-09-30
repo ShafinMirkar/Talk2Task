@@ -143,10 +143,20 @@ async def review_action_items(
     review: ActionItemReview,
     clerk_id: str = Depends(require_user),
 ):
+    """
+    Review action items in one batch.
+
+    Safe to retry: nothing is marked until it has actually happened.
+    - Approved items are marked `jira_created` one by one, right after
+      Jira creates them.
+    - Rejected items are marked only after every approved item succeeded.
+    - On a retry, items that are already in the requested final state
+      are skipped instead of causing an error or a duplicate Jira issue.
+    """
     print("\n========== ACTION ITEM REVIEW ==========")
     print(f"[REVIEW] Approved: {len(review.approved)}")
     print(f"[REVIEW] Rejected: {len(review.rejected)}")
-    
+
     approved_ids = review.approved
     rejected_ids = review.rejected
 
@@ -165,10 +175,7 @@ async def review_action_items(
             detail="Duplicate action item IDs",
         )
 
-    action_items = []
-
-    for item_id in all_ids:
-
+    def load(item_id: str) -> dict:
         if not ObjectId.is_valid(item_id):
             raise HTTPException(
                 status_code=400,
@@ -186,7 +193,28 @@ async def review_action_items(
                 detail=f"Action item not found: {item_id}",
             )
 
-        if item.get("status") is not None:
+        return item
+
+    def result_for(item: dict) -> dict:
+        return {
+            "issue_key": item.get("jira_issue_key"),
+            "task": item["task"],
+            "assignee": item.get("assignee"),
+        }
+
+    pending_approved = []   # still to be sent to Jira
+    done_results = []       # already created in Jira (earlier attempt)
+    pending_rejected = []   # still to be marked rejected
+
+    for item_id in approved_ids:
+        item = load(item_id)
+        status = item.get("status")
+
+        if status is None:
+            pending_approved.append(item)
+        elif status == "jira_created":
+            done_results.append(result_for(item))
+        else:
             raise HTTPException(
                 status_code=400,
                 detail=(
@@ -195,60 +223,68 @@ async def review_action_items(
                 ),
             )
 
-        action_items.append(item)
+    for item_id in rejected_ids:
+        item = load(item_id)
+        status = item.get("status")
 
-    approved_items = [
-        item
-        for item in action_items
-        if str(item["_id"]) in approved_ids
-    ]
+        if status is None:
+            pending_rejected.append(item)
+        elif status != "rejected":
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Action item {item_id} "
+                    f"has already been reviewed"
+                ),
+            )
 
-    rejected_items = [
-        item
-        for item in action_items
-        if str(item["_id"]) in rejected_ids
-    ]
+    # ---- 1. Jira first. Each item is saved the moment it is created.
+    new_results = []
 
-    # Reject items first
-    for item in rejected_items:
+    if pending_approved:
+        jira_action_items = [
+            ActionItem(
+                task=item["task"],
+                assignee=item.get("assignee"),
+                due_date=item.get("due_date"),
+            )
+            for item in pending_approved
+        ]
+
+        def on_created(index: int, result: dict):
+            update_action_item_status(
+                str(pending_approved[index]["_id"]),
+                clerk_id,
+                "jira_created",
+                jira_issue_key=result["issue_key"],
+            )
+
+        try:
+            new_results = await create_jira_issues(
+                jira_action_items,
+                on_created=on_created,
+            )
+        except Exception as error:
+            print(f"[REVIEW] Jira creation failed: {error!r}")
+
+            # Nothing else has been marked, and issues created so far
+            # are already saved, so the client can safely retry.
+            raise HTTPException(
+                status_code=502,
+                detail="Could not create Jira tasks",
+            )
+
+    # ---- 2. Only now mark rejections.
+    for item in pending_rejected:
         update_action_item_status(
             str(item["_id"]),
             clerk_id,
             "rejected",
         )
 
-    # Convert approved MongoDB documents
-    jira_action_items = [
-        ActionItem(
-            task=item["task"],
-            assignee=item.get("assignee"),
-            due_date=item.get("due_date"),
-        )
-        for item in approved_items
-    ]
-
-    jira_results = []
-
-    if jira_action_items:
-        jira_results = await create_jira_issues(
-            jira_action_items
-        )
-
-    # Match Jira results back to MongoDB action items
-    for item, jira_result in zip(
-        approved_items,
-        jira_results,
-    ):
-        update_action_item_status(
-            str(item["_id"]),
-            clerk_id,
-            "jira_created",
-            jira_issue_key=jira_result["issue_key"],
-        )
-
     return {
         "message": "Action items reviewed",
-        "approved": len(approved_items),
-        "rejected": len(rejected_items),
-        "jira_created": jira_results,
+        "approved": len(approved_ids),
+        "rejected": len(rejected_ids),
+        "jira_created": done_results + new_results,
     }

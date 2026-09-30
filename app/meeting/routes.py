@@ -39,9 +39,6 @@ def detect_platform(meeting_url: str) -> Platform:
     ):
         return Platform.TEAMS
 
-    if "zoom.us" in url:
-        return Platform.ZOOM
-
     raise HTTPException(
         status_code=400,
         detail="Unsupported meeting URL",
@@ -107,6 +104,12 @@ async def create_meeting(
         "meeting": saved_meeting,
     }
 
+# Statuses set by Talk2Task itself (webhook), not by Vexa.
+# Vexa only knows about the meeting lifecycle (…/completed);
+# post-meeting AI processing is tracked in MongoDB.
+LOCAL_STATUSES = {"analyzing", "processed"}
+
+
 @router.get("/{meeting_id}/status")
 async def meeting_status(
     meeting_id: str,
@@ -123,6 +126,17 @@ async def meeting_status(
             detail="Meeting not found",
         )
 
+    # Once the webhook has taken over, MongoDB is the source of truth.
+    if meeting.get("status") in LOCAL_STATUSES:
+        return {
+            "meeting_id": meeting_id,
+            "status": meeting["status"],
+            "completion_reason": meeting.get("completion_reason"),
+            "start_time": meeting.get("start_time"),
+            "end_time": meeting.get("end_time"),
+        }
+
+    # Otherwise report Vexa's live lifecycle status.
     status = await get_meeting_status(
         vexa_meeting_id=meeting["vexa_meeting_id"],
     )

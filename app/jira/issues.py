@@ -53,7 +53,16 @@ async def create_jira_issue(
 
 async def create_jira_issues(
     action_items: list[ActionItem],
+    on_created=None,
 ):
+    """
+    Create one Jira issue per action item.
+
+    on_created(index, result) is called synchronously as soon as each
+    issue exists in Jira, so the caller can persist it immediately.
+    If a later item fails, earlier issues are already recorded and a
+    retry will not create duplicates.
+    """
     from app.jira.client import (
         create_http_client,
         create_mcp_connection,
@@ -100,20 +109,34 @@ async def create_jira_issues(
                         f"[JIRA MCP] Created: {issue_key}"
                     )
 
-                    await transition_issue_to_todo(
-                        session,
-                        issue_key,
-                    )
-
-                    print(
-                        f"[JIRA MCP] {issue_key} -> To Do"
-                    )
-
-                    results.append({
+                    result_item = {
                         "issue_key": issue_key,
                         "task": item.task,
                         "assignee": item.assignee,
-                    })
+                    }
+
+                    # Persist right away: the issue exists now.
+                    if on_created:
+                        on_created(len(results), result_item)
+
+                    results.append(result_item)
+
+                    # A failed transition must not fail the item
+                    # (the issue already exists; retrying would duplicate it).
+                    try:
+                        await transition_issue_to_todo(
+                            session,
+                            issue_key,
+                        )
+
+                        print(
+                            f"[JIRA MCP] {issue_key} -> To Do"
+                        )
+                    except Exception as error:
+                        print(
+                            f"[JIRA MCP] Could not transition "
+                            f"{issue_key}: {error}"
+                        )
                     
                 print(
                     f"[JIRA MCP] Finished. "
