@@ -28,6 +28,8 @@ function toStage(status) {
       return "processed";
     case "failed":
       return "failed";
+    case "processing_failed":
+      return "processingFailed";
     default:
       // requested, joining, awaiting_admission, needs_help
       return "waiting";
@@ -148,8 +150,8 @@ export default function Home() {
           return;
         }
 
-        if (next === "failed") {
-          setStage("failed");
+        if (next === "failed" || next === "processingFailed") {
+          setStage(next);
           return;
         }
 
@@ -256,6 +258,16 @@ export default function Home() {
     case "failed":
       content = (
         <MeetingState text="We couldn't connect to the meeting." error>
+          <button className="btn" onClick={reset}>
+            Back
+          </button>
+        </MeetingState>
+      );
+      break;
+
+    case "processingFailed":
+      content = (
+        <MeetingState text="Something went wrong while analyzing the meeting." error>
           <button className="btn" onClick={reset}>
             Back
           </button>

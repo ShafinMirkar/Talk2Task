@@ -64,6 +64,15 @@ def verify_signature(
 # VEXA WEBHOOK
 # ============================================================
 
+def _leaf_errors(error: BaseException):
+    """Unwrap (nested) ExceptionGroups into the real underlying errors."""
+    if isinstance(error, BaseExceptionGroup):
+        for sub in error.exceptions:
+            yield from _leaf_errors(sub)
+    else:
+        yield error
+
+
 @router.post("/vexa")
 async def handle_webhook(request: Request):
 
@@ -194,214 +203,247 @@ async def handle_webhook(request: Request):
         status="analyzing",
     )
 
-    # --------------------------------------------------------
-    # 6. Fetch transcript
-    # --------------------------------------------------------
+    try:
 
-    print("[TRANSCRIPT] Fetching transcript...")
+        # --------------------------------------------------------
+        # 6. Fetch transcript
+        # --------------------------------------------------------
 
-    raw_transcript = get_transcript(
-        platform,
-        native_meeting_id,
-    )
+        print("[TRANSCRIPT] Fetching transcript...")
 
-    # --------------------------------------------------------
-    # 7. Normalize transcript
-    # --------------------------------------------------------
-
-    transcript = normalize_transcript(
-        raw_transcript
-    )
-
-    print(
-        f"[TRANSCRIPT] "
-        f"Received {len(transcript.segments)} segments"
-    )
-    # --------------------------------------------------------
-    # 8. Fetch Jira project context
-    # --------------------------------------------------------
-
-    print("[JIRA] Fetching project users...")
-
-    jira_context = await fetch_project_context()
-
-    print(
-        "[JIRA] Users:",
-        [user.display_name for user in jira_context.users],
-    )
-
-    # --------------------------------------------------------
-    # 9. Meeting date
-    # --------------------------------------------------------
-
-    meeting_date = (
-        meeting.get("start_time")
-    )
-
-    if not meeting_date:
-
-        meeting_date = time.strftime(
-            "%Y-%m-%d"
+        raw_transcript = get_transcript(
+            platform,
+            native_meeting_id,
         )
 
-    meeting_date = str(
-        meeting_date
-    )
+        # --------------------------------------------------------
+        # 7. Normalize transcript
+        # --------------------------------------------------------
 
-    # --------------------------------------------------------
-    # 10. Gemini intelligence
-    # --------------------------------------------------------
-
-    print(
-        "\nAnalyzing meeting with Gemini..."
-    )
-
-    intelligence = process_meeting(
-        transcript=transcript,
-        meeting_date=meeting_date,
-        jira_context=jira_context,
-    )
-
-    # --------------------------------------------------------
-    # 11. Print intelligence
-    # --------------------------------------------------------
-
-    print(
-        "\n========== SUMMARY =========="
-    )
-
-    print(
-        intelligence.summary.summary
-    )
-
-    print(
-        "\n========== KEY POINTS =========="
-    )
-
-    for point in intelligence.summary.key_points:
-
-        print(
-            "-",
-            point,
-        )
-
-    print(
-        "\n========== DECISIONS =========="
-    )
-
-    for decision in intelligence.decisions:
-
-        print(
-            "-",
-            decision.decision,
+        transcript = normalize_transcript(
+            raw_transcript
         )
 
         print(
-            "  Made by:",
-            decision.made_by,
+            f"[TRANSCRIPT] "
+            f"Received {len(transcript.segments)} segments"
         )
+        # --------------------------------------------------------
+        # 8. Fetch Jira project context
+        # --------------------------------------------------------
 
-    print(
-        "\n========== ACTION ITEMS =========="
-    )
+        print("[JIRA] Fetching project users...")
 
-    for item in intelligence.action_items:
+        jira_context = await fetch_project_context()
 
         print(
-            "-",
-            item.task,
+            "[JIRA] Users:",
+            [user.display_name for user in jira_context.users],
         )
+
+        # --------------------------------------------------------
+        # 9. Meeting date
+        # --------------------------------------------------------
+
+        meeting_date = (
+            meeting.get("start_time")
+        )
+
+        if not meeting_date:
+
+            meeting_date = time.strftime(
+                "%Y-%m-%d"
+            )
+
+        meeting_date = str(
+            meeting_date
+        )
+
+        # --------------------------------------------------------
+        # 10. Gemini intelligence
+        # --------------------------------------------------------
 
         print(
-            "  Assignee:",
-            item.assignee,
+            "\nAnalyzing meeting with Gemini..."
         )
+
+        intelligence = process_meeting(
+            transcript=transcript,
+            meeting_date=meeting_date,
+            jira_context=jira_context,
+        )
+
+        # --------------------------------------------------------
+        # 11. Print intelligence
+        # --------------------------------------------------------
 
         print(
-            "  Due:",
-            item.due_date,
-        )
-
-    # --------------------------------------------------------
-    # 12. Save action items
-    # --------------------------------------------------------
-
-    print(
-        "\nSaving action items..."
-    )
-
-    for item in intelligence.action_items:
-
-        saved_item = create_action_item(
-            action_item=item.model_dump(),
-            clerk_id=clerk_id,
-            meeting_id=meeting["_id"],
-        )
-
-        print(
-            "\nAction item saved:"
-        )
-
-        print(
-            "  ID:",
-            saved_item.get("_id"),
-        )
-
-        print(
-            "  Task:",
-            saved_item.get("task"),
-        )
-
-        print(
-            "  Assignee:",
-            saved_item.get("assignee"),
+            "\n========== SUMMARY =========="
         )
 
         print(
-            "  Due:",
-            saved_item.get("due_date"),
+            intelligence.summary.summary
         )
 
         print(
-            "  Status:",
-            saved_item.get("status"),
+            "\n========== KEY POINTS =========="
         )
 
-    # --------------------------------------------------------
-    # 13. Mark meeting processed
-    # --------------------------------------------------------
+        for point in intelligence.summary.key_points:
 
-    update_meeting_vexa_data(
-        platform=platform,
-        native_meeting_id=native_meeting_id,
-        vexa_meeting_id=meeting.get(
-            "vexa_meeting_id"
-        ),
-        status="processed",
-    )
+            print(
+                "-",
+                point,
+            )
 
-    print(
-        "\n================================"
-    )
+        print(
+            "\n========== DECISIONS =========="
+        )
 
-    print(
-        "Meeting processing complete."
-    )
+        for decision in intelligence.decisions:
 
-    print(
-        "================================\n"
-    )
+            print(
+                "-",
+                decision.decision,
+            )
+
+            print(
+                "  Made by:",
+                decision.made_by,
+            )
+
+        print(
+            "\n========== ACTION ITEMS =========="
+        )
+
+        for item in intelligence.action_items:
+
+            print(
+                "-",
+                item.task,
+            )
+
+            print(
+                "  Assignee:",
+                item.assignee,
+            )
+
+            print(
+                "  Due:",
+                item.due_date,
+            )
+
+        # --------------------------------------------------------
+        # 12. Save action items
+        # --------------------------------------------------------
+
+        print(
+            "\nSaving action items..."
+        )
+
+        for item in intelligence.action_items:
+
+            saved_item = create_action_item(
+                action_item=item.model_dump(),
+                clerk_id=clerk_id,
+                meeting_id=meeting["_id"],
+            )
+
+            print(
+                "\nAction item saved:"
+            )
+
+            print(
+                "  ID:",
+                saved_item.get("_id"),
+            )
+
+            print(
+                "  Task:",
+                saved_item.get("task"),
+            )
+
+            print(
+                "  Assignee:",
+                saved_item.get("assignee"),
+            )
+
+            print(
+                "  Due:",
+                saved_item.get("due_date"),
+            )
+
+            print(
+                "  Status:",
+                saved_item.get("status"),
+            )
+
+        # --------------------------------------------------------
+        # 13. Mark meeting processed
+        # --------------------------------------------------------
+
+        update_meeting_vexa_data(
+            platform=platform,
+            native_meeting_id=native_meeting_id,
+            vexa_meeting_id=meeting.get(
+                "vexa_meeting_id"
+            ),
+            status="processed",
+        )
+
+        print(
+            "\n================================"
+        )
+
+        print(
+            "Meeting processing complete."
+        )
+
+        print(
+            "================================\n"
+        )
 
     
-    return {
-        "status": "processed",
-        "platform": platform,
-        "native_meeting_id": native_meeting_id,
-        "clerk_id": clerk_id,
-        "segments": len(
-            transcript.segments
-        ),
-        "action_items": len(
-            intelligence.action_items
-        ),
-    }
+        return {
+            "status": "processed",
+            "platform": platform,
+            "native_meeting_id": native_meeting_id,
+            "clerk_id": clerk_id,
+            "segments": len(
+                transcript.segments
+            ),
+            "action_items": len(
+                intelligence.action_items
+            ),
+        }
+
+    except Exception as error:
+
+        print(
+            f"[WEBHOOK] Processing failed for "
+            f"{native_meeting_id}"
+        )
+
+        for cause in _leaf_errors(error):
+            print(
+                f"[WEBHOOK] Root cause: "
+                f"{type(cause).__name__}: {cause} "
+                f"(code={getattr(cause, 'code', None)}, "
+                f"data={getattr(cause, 'data', None)})"
+            )
+
+        # Let the frontend stop waiting.
+        update_meeting_vexa_data(
+            platform=platform,
+            native_meeting_id=native_meeting_id,
+            vexa_meeting_id=meeting.get("vexa_meeting_id"),
+            status="processing_failed",
+        )
+
+        # 200, not 500: Vexa cannot fix this, and a retry would
+        # only re-run work that already partly happened.
+        return {
+            "status": "processing_failed",
+            "platform": platform,
+            "native_meeting_id": native_meeting_id,
+        }

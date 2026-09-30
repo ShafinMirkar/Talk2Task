@@ -107,7 +107,7 @@ async def create_meeting(
 # Statuses set by Talk2Task itself (webhook), not by Vexa.
 # Vexa only knows about the meeting lifecycle (…/completed);
 # post-meeting AI processing is tracked in MongoDB.
-LOCAL_STATUSES = {"analyzing", "processed"}
+LOCAL_STATUSES = {"analyzing", "processed", "processing_failed"}
 
 
 @router.get("/{meeting_id}/status")
